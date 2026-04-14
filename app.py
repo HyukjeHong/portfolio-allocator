@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="Portfolio Allocator", layout="wide", initial_sidebar_state="collapsed")
 
@@ -38,7 +37,8 @@ input[type="number"] {
     font-size: 0.88rem !important;
     -webkit-text-fill-color: #EAEAEA !important;
 }
-div[data-testid="stNumberInput"] input:focus, input[type="number"]:focus {
+div[data-testid="stNumberInput"] input:focus,
+input[type="number"]:focus {
     border: 1px solid #1E88E5 !important;
     box-shadow: 0 0 0 3px rgba(30,136,229,0.12) !important;
     outline: none !important;
@@ -101,42 +101,49 @@ div[data-testid="stDataFrame"] {
 
 hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 28px 0 !important; }
 
-/* 카테고리 컨테이너 */
-.cat-box {
+.cat-wrap {
     border-radius: 16px;
-    padding: 20px 24px 16px 24px;
-    margin-bottom: 16px;
+    padding: 20px 24px 20px 24px;
+    margin-bottom: 14px;
     border: 1px solid;
+    position: relative;
 }
-.cat-equity  { background: rgba(30,136,229,0.04); border-color: rgba(30,136,229,0.15) !important; }
-.cat-fixed   { background: rgba(34,197,94,0.04);  border-color: rgba(34,197,94,0.15) !important; }
-.cat-alt     { background: rgba(249,115,22,0.04); border-color: rgba(249,115,22,0.15) !important; }
-.cat-cash    { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.15) !important; }
+.cat-equity  { background: rgba(30,136,229,0.04);  border-color: rgba(30,136,229,0.18) !important; }
+.cat-fixed   { background: rgba(34,197,94,0.04);   border-color: rgba(34,197,94,0.18) !important; }
+.cat-alt     { background: rgba(249,115,22,0.04);  border-color: rgba(249,115,22,0.18) !important; }
+.cat-cash    { background: rgba(168,85,247,0.04);  border-color: rgba(168,85,247,0.18) !important; }
 
 .cat-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
     padding-bottom: 12px;
     border-bottom: 1px solid rgba(255,255,255,0.05);
 }
-.cat-title {
+.cat-title-ko {
     font-family: 'DM Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
+    font-size: 0.82rem;
     font-weight: 500;
+    letter-spacing: 1px;
+}
+.cat-title-en {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    color: rgba(234,234,234,0.25) !important;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-left: 10px;
 }
 .cat-subtotal {
     font-family: 'DM Mono', monospace;
-    font-size: 1.1rem;
+    font-size: 1.15rem;
     font-weight: 400;
 }
 .cat-amt {
     font-family: 'DM Mono', monospace;
     font-size: 0.72rem;
-    color: rgba(234,234,234,0.25) !important;
+    color: rgba(234,234,234,0.22) !important;
     margin-left: 10px;
 }
 
@@ -163,9 +170,8 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
     align-items: center;
     gap: 14px;
 }
-.section-label::after {
-    content: ''; flex: 1; height: 1px; background: #1e1e1e;
-}
+.section-label::after { content: ''; flex: 1; height: 1px; background: #1e1e1e; }
+
 .action-card-buy {
     background: linear-gradient(135deg, rgba(74,222,128,0.05) 0%, transparent 100%);
     border: 1px solid rgba(74,222,128,0.15);
@@ -181,18 +187,19 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
 </style>
 """, unsafe_allow_html=True)
 
-# ── 자산 분류 체계 ────────────────────────────────────────────────────
+# ── 최종 자산 분류 체계 ───────────────────────────────────────────────
 카테고리 = {
     "주식": {
         "label": "Equities",
         "color": "#1E88E5",
         "css": "cat-equity",
         "items": [
-            ("국내주식",    "KOSPI/KOSDAQ"),
-            ("미국 대형주", "S&P500"),
-            ("미국 성장주", "NASDAQ"),
-            ("선진국",      "유럽·일본"),
-            ("이머징마켓",  "EM"),
+            ("미국 대형주",  "S&P500"),
+            ("미국 성장주",  "NASDAQ"),
+            ("미국 개별주",  "Individual Stocks"),
+            ("선진국",       "유럽·일본"),
+            ("한국 주식",    "KOSPI/KOSDAQ"),
+            ("이머징마켓",   "EM"),
         ]
     },
     "채권": {
@@ -200,12 +207,12 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
         "color": "#22c55e",
         "css": "cat-fixed",
         "items": [
-            ("국내 장기채",     "10년+"),
-            ("미국 장기채",     "TLT"),
-            ("투자등급 회사채", "IG"),
-            ("하이일드 회사채", "HY"),
-            ("이머징 채권",     "EM Bond"),
-            ("JBBB",            "CLO BBB"),
+            ("미국 장기채",      "TLT"),
+            ("국내 장기채",      "10년+"),
+            ("투자등급 회사채",  "IG"),
+            ("하이일드 회사채",  "HY"),
+            ("이머징 채권",      "EM Bond"),
+            ("JBBB",             "CLO BBB"),
         ]
     },
     "대체투자": {
@@ -216,12 +223,12 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
             ("리츠",       "REITs"),
             ("금",         "Gold"),
             ("은",         "Silver"),
-            ("원유",       "Crude Oil"),
             ("원자재 지수","DJP"),
+            ("농산물",     "Agriculture"),
             ("비트코인",   "BTC"),
         ]
     },
-    "현금성": {
+    "현금성 자산": {
         "label": "Cash & Equivalents",
         "color": "#a855f7",
         "css": "cat-cash",
@@ -229,7 +236,7 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
             ("현금/MMF",   "Cash"),
             ("미국 단기채","T-Bill"),
             ("국내 단기채","1~3년"),
-            ("JPST",       "USD 초단기채"),
+            ("JPST",       "초단기 우량채"),
             ("JAAA",       "CLO AAA"),
         ]
     },
@@ -243,6 +250,8 @@ hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 
 for k in ["현재자산","목표자산","현재통화","목표통화"]:
     if k not in st.session_state:
         st.session_state[k] = {}
+
+def 금액(p): return round(total * p / 100) if 'total' in dir() else 0
 
 # ── 헤더 ──────────────────────────────────────────────────────────────
 col_t, col_inp = st.columns([3, 1])
@@ -266,103 +275,119 @@ with col_inp:
 
 def 금액(p): return round(total * p / 100)
 
+# ── 카테고리 입력 렌더링 함수 ─────────────────────────────────────────
+def 카테고리_입력(prefix, sa, cat_key):
+    info = 카테고리[cat_key]
+    items = info["items"]
+    color = info["color"]
+    css = info["css"]
+
+    소계 = sum(sa.get(이름, 0) for 이름, _ in items)
+    색 = color
+
+    st.markdown(f'''
+    <div class="cat-wrap {css}">
+        <div class="cat-header">
+            <div>
+                <span class="cat-title-ko" style="color:{color};">{cat_key}</span>
+                <span class="cat-title-en">/ {info["label"]}</span>
+            </div>
+            <div>
+                <span class="cat-subtotal" style="color:{색};">{소계:.1f}%</span>
+                <span class="cat-amt">{금액(소계):,}원</span>
+            </div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    # 4열 그리드로 입력창 배치
+    n = len(items)
+    rows = (n + 3) // 4  # 올림 나눗셈
+
+    for row in range(rows):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            item_idx = row * 4 + col_idx
+            if item_idx < n:
+                이름, 티커 = items[item_idx]
+                with cols[col_idx]:
+                    v = st.number_input(
+                        f"{이름} ({티커})",
+                        min_value=0.0, max_value=100.0,
+                        value=float(sa.get(이름, 0)),
+                        step=0.5,
+                        key=f"{prefix}_a_{이름}"
+                    )
+                    sa[이름] = v
+            # 빈 칸은 그냥 비워둠 (자연스럽게 정렬됨)
+
+    st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
 # ── 입력 탭 함수 ──────────────────────────────────────────────────────
 def 입력탭(prefix, sa, sc):
 
-    # 전체 합계 계산
-    전체합 = sum(sa.values()) if sa else 0
+    # 전체 합계 미리 계산 (도넛용)
+    cat_sums = {cat: sum(sa.get(이름, 0) for 이름, _ in info["items"]) for cat, info in 카테고리.items()}
+    전체합 = sum(cat_sums.values())
 
-    # 도넛 차트 (상단 요약)
-    cat_sums = {}
-    for cat, info in 카테고리.items():
-        cat_sums[cat] = sum(sa.get(이름, 0) for 이름, _ in info["items"])
-
-    if any(v > 0 for v in cat_sums.values()):
+    # 도넛 차트
+    if 전체합 > 0:
         st.markdown('<div class="section-label">포트폴리오 구성 요약</div>', unsafe_allow_html=True)
-        c_chart, c_legend = st.columns([1, 1])
+        c_chart, c_bar = st.columns([1, 1])
+
         with c_chart:
-            labels = [f"{cat} ({info['label']})" for cat, info in 카테고리.items()]
+            labels = [f"{cat}" for cat in 카테고리]
             values = [cat_sums[cat] for cat in 카테고리]
             colors = [info["color"] for info in 카테고리.values()]
-            fig_donut = go.Figure(go.Pie(
+            fig = go.Figure(go.Pie(
                 labels=labels, values=values, hole=0.65,
                 marker=dict(colors=colors, line=dict(color="#0d0d0d", width=3)),
                 textinfo="label+percent",
-                textfont=dict(size=11, color="rgba(234,234,234,0.8)"),
+                textfont=dict(size=12, color="rgba(234,234,234,0.85)"),
                 hovertemplate="<b>%{label}</b><br>%{value:.1f}%<br>%{customdata:,}원<extra></extra>",
                 customdata=[금액(cat_sums[cat]) for cat in 카테고리]
             ))
-            fig_donut.update_layout(
+            fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", height=280,
                 margin=dict(t=10, b=10, l=0, r=0),
                 font=dict(color="rgba(234,234,234,0.4)"),
-                legend=dict(font=dict(size=10, color="rgba(234,234,234,0.4)"), bgcolor="rgba(0,0,0,0)"),
-                annotations=[dict(
-                    text=f'<b>{전체합:.0f}%</b>',
-                    x=0.5, y=0.5, font_size=24, showarrow=False,
-                    font=dict(color="#EAEAEA")
-                )]
+                legend=dict(font=dict(size=11, color="rgba(234,234,234,0.45)"), bgcolor="rgba(0,0,0,0)"),
+                annotations=[dict(text=f'<b>{전체합:.0f}%</b>', x=0.5, y=0.5,
+                                  font_size=26, showarrow=False, font=dict(color="#EAEAEA"))]
             )
-            st.plotly_chart(fig_donut, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-        with c_legend:
+        with c_bar:
             st.markdown("<br>", unsafe_allow_html=True)
             for cat, info in 카테고리.items():
                 s = cat_sums[cat]
-                bar_w = int(s) if s <= 100 else 100
+                bar_w = min(int(s), 100)
                 st.markdown(f'''
-                <div style="margin-bottom:14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                        <span style="font-family:'DM Mono',monospace;font-size:0.7rem;color:rgba(234,234,234,0.5);letter-spacing:1px;">
-                            {cat} <span style="color:rgba(234,234,234,0.25);font-size:0.65rem;">/ {info["label"]}</span>
+                <div style="margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <span style="font-family:'DM Mono',monospace;font-size:0.72rem;color:rgba(234,234,234,0.5);">
+                            {cat}
+                            <span style="color:rgba(234,234,234,0.2);font-size:0.6rem;margin-left:6px;">/ {info["label"]}</span>
                         </span>
-                        <span style="font-family:'DM Mono',monospace;font-size:0.95rem;color:{info["color"]};">
-                            {s:.1f}% <span style="color:rgba(234,234,234,0.2);font-size:0.72rem;">{금액(s):,}원</span>
+                        <span style="font-family:'DM Mono',monospace;font-size:1rem;color:{info["color"]};">
+                            {s:.1f}%
+                            <span style="color:rgba(234,234,234,0.2);font-size:0.68rem;margin-left:6px;">{금액(s):,}원</span>
                         </span>
                     </div>
                     <div style="height:3px;background:#1e1e1e;border-radius:2px;">
-                        <div style="height:3px;width:{bar_w}%;background:{info["color"]};border-radius:2px;opacity:0.7;transition:width 0.3s;"></div>
+                        <div style="height:3px;width:{bar_w}%;background:{info["color"]};border-radius:2px;opacity:0.65;"></div>
                     </div>
                 </div>
                 ''', unsafe_allow_html=True)
 
-    st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown("<hr>", unsafe_allow_html=True)
 
-    # ── 카테고리별 입력 ──────────────────────────────────────────────
-    for cat, info in 카테고리.items():
-        소계 = sum(sa.get(이름, 0) for 이름, _ in info["items"])
-        색 = info["color"]
-        st.markdown(f'''
-        <div class="cat-box {info["css"]}">
-            <div class="cat-header">
-                <div>
-                    <span class="cat-title" style="color:{색};">{cat}</span>
-                    <span style="font-family:'DM Mono',monospace;font-size:0.6rem;color:rgba(234,234,234,0.2);margin-left:10px;letter-spacing:2px;">/ {info["label"]}</span>
-                </div>
-                <div>
-                    <span class="cat-subtotal" style="color:{색};">{소계:.1f}%</span>
-                    <span class="cat-amt">{금액(소계):,}원</span>
-                </div>
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
+    # 카테고리별 입력
+    st.markdown('<div class="section-label">자산군 비중 (%)</div>', unsafe_allow_html=True)
+    for cat_key in 카테고리:
+        카테고리_입력(prefix, sa, cat_key)
 
-        n_items = len(info["items"])
-        cols = st.columns(min(n_items, 4) if n_items <= 4 else 4)
-        for i, (이름, 티커) in enumerate(info["items"]):
-            with cols[i % 4]:
-                v = st.number_input(
-                    f"{이름} ({티커})",
-                    min_value=0.0, max_value=100.0,
-                    value=float(sa.get(이름, 0)),
-                    step=0.5,
-                    key=f"{prefix}_a_{이름}"
-                )
-                sa[이름] = v
-
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
-    # 전체 합계 pill
+    # 전체 합계
     전체합 = sum(sa.values())
     색_전체 = "#4ade80" if abs(전체합-100)<0.1 else "#f87171" if 전체합>100 else "#f59e0b"
     st.markdown(f'''
@@ -398,7 +423,7 @@ def 입력탭(prefix, sa, sc):
             labels=[x[0] for x in 통d], values=[x[1] for x in 통d], hole=0.65,
             marker=dict(colors=["#1E88E5","#ec4899","#22c55e","#f97316","#a855f7"][:len(통d)],
                         line=dict(color="#0d0d0d", width=3)),
-            textinfo="label+percent", textfont=dict(size=11, color="rgba(234,234,234,0.75)"),
+            textinfo="label+percent", textfont=dict(size=11, color="rgba(234,234,234,0.8)"),
             hovertemplate="<b>%{label}</b><br>%{value}%<br>%{customdata:,}원<extra></extra>",
             customdata=[금액(x[1]) for x in 통d]
         ))
@@ -407,7 +432,8 @@ def 입력탭(prefix, sa, sc):
             margin=dict(t=10,b=10,l=0,r=0),
             font=dict(color="rgba(234,234,234,0.35)"),
             legend=dict(font=dict(size=10,color="rgba(234,234,234,0.35)"),bgcolor="rgba(0,0,0,0)"),
-            annotations=[dict(text=f'<b>{통합:.0f}%</b>', x=0.5, y=0.5, font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
+            annotations=[dict(text=f'<b>{통합:.0f}%</b>', x=0.5, y=0.5,
+                              font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
         )
         col_통, _ = st.columns([1, 1])
         with col_통:
@@ -428,7 +454,6 @@ with tab3:
     현통 = st.session_state["현재통화"]
     목통 = st.session_state["목표통화"]
 
-    # KPI
     현_cat = {cat: sum(현자.get(이름,0) for 이름,_ in info["items"]) for cat, info in 카테고리.items()}
     목_cat = {cat: sum(목자.get(이름,0) for 이름,_ in info["items"]) for cat, info in 카테고리.items()}
 
@@ -440,47 +465,44 @@ with tab3:
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
-    # 카테고리별 현재 vs 목표 도넛 비교
+    # 카테고리별 도넛 비교
     if any(v>0 for v in 현_cat.values()) or any(v>0 for v in 목_cat.values()):
         st.markdown('<div class="section-label">카테고리별 현재 vs 목표</div>', unsafe_allow_html=True)
         cc1, cc2 = st.columns(2)
         colors = [info["color"] for info in 카테고리.values()]
         cats = list(카테고리.keys())
-        labels_full = [f"{c} / {카테고리[c]['label']}" for c in cats]
 
         with cc1:
             fig_현 = go.Figure(go.Pie(
-                labels=labels_full,
-                values=[현_cat[c] for c in cats],
-                hole=0.6,
+                labels=cats, values=[현_cat[c] for c in cats], hole=0.6,
                 marker=dict(colors=colors, line=dict(color="#0d0d0d", width=3)),
-                textinfo="label+percent", textfont=dict(size=10, color="rgba(234,234,234,0.8)"),
+                textinfo="label+percent", textfont=dict(size=11, color="rgba(234,234,234,0.85)"),
             ))
             fig_현.update_layout(
-                title=dict(text="현재 포트폴리오", font=dict(color="rgba(234,234,234,0.4)", size=11, family="DM Mono"), x=0.5),
+                title=dict(text="현재 포트폴리오", font=dict(color="rgba(234,234,234,0.35)", size=11, family="DM Mono"), x=0.5),
                 paper_bgcolor="rgba(0,0,0,0)", height=300,
                 margin=dict(t=30,b=10,l=0,r=0),
                 font=dict(color="rgba(234,234,234,0.35)"),
                 legend=dict(font=dict(size=9,color="rgba(234,234,234,0.35)"),bgcolor="rgba(0,0,0,0)"),
-                annotations=[dict(text=f'<b>{sum(현_cat.values()):.0f}%</b>', x=0.5, y=0.5, font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
+                annotations=[dict(text=f'<b>{sum(현_cat.values()):.0f}%</b>', x=0.5, y=0.5,
+                                  font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
             )
             st.plotly_chart(fig_현, use_container_width=True)
 
         with cc2:
             fig_목 = go.Figure(go.Pie(
-                labels=labels_full,
-                values=[목_cat[c] for c in cats],
-                hole=0.6,
+                labels=cats, values=[목_cat[c] for c in cats], hole=0.6,
                 marker=dict(colors=colors, line=dict(color="#0d0d0d", width=3)),
-                textinfo="label+percent", textfont=dict(size=10, color="rgba(234,234,234,0.8)"),
+                textinfo="label+percent", textfont=dict(size=11, color="rgba(234,234,234,0.85)"),
             ))
             fig_목.update_layout(
-                title=dict(text="목표 포트폴리오", font=dict(color="rgba(234,234,234,0.4)", size=11, family="DM Mono"), x=0.5),
+                title=dict(text="목표 포트폴리오", font=dict(color="rgba(234,234,234,0.35)", size=11, family="DM Mono"), x=0.5),
                 paper_bgcolor="rgba(0,0,0,0)", height=300,
                 margin=dict(t=30,b=10,l=0,r=0),
                 font=dict(color="rgba(234,234,234,0.35)"),
                 legend=dict(font=dict(size=9,color="rgba(234,234,234,0.35)"),bgcolor="rgba(0,0,0,0)"),
-                annotations=[dict(text=f'<b>{sum(목_cat.values()):.0f}%</b>', x=0.5, y=0.5, font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
+                annotations=[dict(text=f'<b>{sum(목_cat.values()):.0f}%</b>', x=0.5, y=0.5,
+                                  font_size=20, showarrow=False, font=dict(color="#EAEAEA"))]
             )
             st.plotly_chart(fig_목, use_container_width=True)
 
@@ -515,7 +537,6 @@ with tab3:
         df = pd.DataFrame(자rows)[["자산","구분","티커","현재(%)","목표(%)","차이(%)","현재금액","목표금액","조정금액"]]
         st.dataframe(df.style.applymap(스타, subset=["차이(%)","조정금액"]), use_container_width=True, hide_index=True)
 
-        # 막대 비교 차트
         fig_b = go.Figure()
         ns = [r["자산"] for r in 자rows]
         fig_b.add_bar(name="현재", x=ns, y=[r["현재(%)"] for r in 자rows],
@@ -523,12 +544,15 @@ with tab3:
         fig_b.add_bar(name="목표", x=ns, y=[r["목표(%)"] for r in 자rows],
                       marker=dict(color="rgba(74,222,128,0.75)", line=dict(color="rgba(74,222,128,0.2)",width=1)))
         fig_b.update_layout(
-            barmode="group", height=360,
+            barmode="group", height=380,
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="rgba(234,234,234,0.35)", family="DM Sans"),
-            xaxis=dict(tickangle=-35, gridcolor="rgba(255,255,255,0.03)", color="rgba(234,234,234,0.3)", tickfont=dict(size=11)),
-            yaxis=dict(title="비중 (%)", gridcolor="rgba(255,255,255,0.05)", color="rgba(234,234,234,0.3)"),
-            legend=dict(font=dict(color="rgba(234,234,234,0.45)"), bgcolor="rgba(0,0,0,0)", orientation="h", y=1.08),
+            xaxis=dict(tickangle=-35, gridcolor="rgba(255,255,255,0.03)",
+                       color="rgba(234,234,234,0.3)", tickfont=dict(size=11)),
+            yaxis=dict(title="비중 (%)", gridcolor="rgba(255,255,255,0.05)",
+                       color="rgba(234,234,234,0.3)"),
+            legend=dict(font=dict(color="rgba(234,234,234,0.45)"),
+                        bgcolor="rgba(0,0,0,0)", orientation="h", y=1.08),
             margin=dict(t=20,b=80,l=0,r=0), bargap=0.2
         )
         st.plotly_chart(fig_b, use_container_width=True)

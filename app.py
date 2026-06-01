@@ -751,7 +751,7 @@ with tab3:
 
     if 자rows:
         df = pd.DataFrame(자rows)[["자산","구분","티커","현재(%)","목표(%)","차이(%)","현재금액","목표금액","조정금액"]]
-        st.dataframe(df.style.applymap(스타, subset=["차이(%)","조정금액"]), use_container_width=True, hide_index=True)
+        st.dataframe(df.style.map(스타, subset=["차이(%)","조정금액"]), use_container_width=True, hide_index=True)
 
         fig_b = go.Figure()
         ns = [r["자산"] for r in 자rows]
@@ -793,7 +793,7 @@ with tab3:
             })
     if 통rows:
         df2 = pd.DataFrame(통rows)[["통화","티커","현재(%)","목표(%)","차이(%)","현재금액","목표금액","조정금액"]]
-        st.dataframe(df2.style.applymap(스타, subset=["차이(%)","조정금액"]), use_container_width=True, hide_index=True)
+        st.dataframe(df2.style.map(스타, subset=["차이(%)","조정금액"]), use_container_width=True, hide_index=True)
 
     st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -930,7 +930,7 @@ with tab4:
                 if s.startswith("-"): return "color:#f87171;font-weight:600"
                 return ""
             표 = df_종목[["티커","시장","수량","매입가","현재가","통화","평가액(원)","손익(원)","수익률"]]
-            st.dataframe(표.style.applymap(수익률색, subset=["손익(원)","수익률"]),
+            st.dataframe(표.style.map(수익률색, subset=["손익(원)","수익률"]),
                          use_container_width=True, hide_index=True)
 
             # 삭제 버튼

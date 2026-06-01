@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import json
 
 st.set_page_config(page_title="Portfolio Allocator", layout="wide", initial_sidebar_state="collapsed")
 
@@ -100,6 +101,36 @@ div[data-testid="stDataFrame"] {
 }
 
 hr { border: none !important; border-top: 1px solid #1e1e1e !important; margin: 28px 0 !important; }
+
+/* 내보내기 버튼 */
+div[data-testid="stDownloadButton"] button {
+    background: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    color: #EAEAEA !important;
+    border-radius: 10px !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 0.78rem !important;
+    padding: 10px !important;
+}
+div[data-testid="stDownloadButton"] button:hover {
+    border: 1px solid #1E88E5 !important;
+    color: #1E88E5 !important;
+}
+/* 파일 업로더 */
+section[data-testid="stFileUploaderDropzone"] {
+    background: #1a1a1a !important;
+    border: 1px dashed #2a2a2a !important;
+    border-radius: 10px !important;
+}
+section[data-testid="stFileUploaderDropzone"] button {
+    background: #222 !important;
+    border: 1px solid #333 !important;
+    color: #EAEAEA !important;
+}
+div[data-testid="stFileUploader"] label {
+    color: rgba(234,234,234,0.35) !important;
+    font-size: 0.7rem !important;
+}
 
 .cat-wrap {
     border-radius: 16px;
@@ -438,6 +469,58 @@ def 입력탭(prefix, sa, sc):
         col_통, _ = st.columns([1, 1])
         with col_통:
             st.plotly_chart(fig2, use_container_width=True)
+
+# ── 내보내기 / 가져오기 ───────────────────────────────────────────────
+st.markdown('<div class="section-label">데이터 저장 / 불러오기</div>', unsafe_allow_html=True)
+
+exp_col, imp_col = st.columns(2)
+
+with exp_col:
+    저장데이터 = {
+        "총투자금액": total,
+        "현재자산": st.session_state["현재자산"],
+        "목표자산": st.session_state["목표자산"],
+        "현재통화": st.session_state["현재통화"],
+        "목표통화": st.session_state["목표통화"],
+    }
+    json_str = json.dumps(저장데이터, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="⬇  내보내기 (현재 입력값을 파일로 저장)",
+        data=json_str.encode("utf-8"),
+        file_name="portfolio.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+with imp_col:
+    업로드 = st.file_uploader("⬆  가져오기 (저장한 portfolio.json 파일 선택)", type=["json"], label_visibility="visible")
+    if 업로드 is not None:
+        try:
+            불러온 = json.load(업로드)
+            # 위젯이 이미 생성되기 전에 세션값을 세팅해야 하므로, 위젯 key를 직접 갱신
+            로드플래그 = f"loaded_{업로드.name}_{업로드.size}"
+            if not st.session_state.get(로드플래그, False):
+                st.session_state["현재자산"] = 불러온.get("현재자산", {})
+                st.session_state["목표자산"] = 불러온.get("목표자산", {})
+                st.session_state["현재통화"] = 불러온.get("현재통화", {})
+                st.session_state["목표통화"] = 불러온.get("목표통화", {})
+                # number_input 위젯 key들도 직접 세팅
+                for prefix, srcA, srcC in [("현재", 불러온.get("현재자산",{}), 불러온.get("현재통화",{})),
+                                           ("목표", 불러온.get("목표자산",{}), 불러온.get("목표통화",{}))]:
+                    for cat, info in 카테고리.items():
+                        for 이름, _ in info["items"]:
+                            if 이름 in srcA:
+                                st.session_state[f"{prefix}_a_{이름}"] = float(srcA[이름])
+                    for 이름, _, _ in 통화목록:
+                        if 이름 in srcC:
+                            st.session_state[f"{prefix}_c_{이름}"] = float(srcC[이름])
+                st.session_state[로드플래그] = True
+                st.success("✅ 불러오기 완료! 아래 탭에서 확인하세요.")
+                st.rerun()
+        except Exception as e:
+            st.error("⚠️ 파일을 읽을 수 없습니다. 올바른 portfolio.json 파일인지 확인해주세요.")
+
+st.markdown("<hr>", unsafe_allow_html=True)
 
 # ── 탭 ───────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["  📌  현재 비중  ", "  🎯  목표 비중  ", "  ⚡  비교 & 리밸런싱  "])

@@ -3,6 +3,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 
+try:
+    import yfinance as yf
+    YF_OK = True
+except ImportError:
+    YF_OK = False
+
 st.set_page_config(page_title="Portfolio Allocator", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
@@ -282,6 +288,10 @@ for k in ["현재자산","목표자산","현재통화","목표통화"]:
     if k not in st.session_state:
         st.session_state[k] = {}
 
+# 종목 보유 내역 (카테고리별 리스트)
+if "보유종목" not in st.session_state:
+    st.session_state["보유종목"] = {cat: [] for cat in ["주식","채권","대체투자","현금성 자산"]}
+
 def 금액(p): return round(total * p / 100) if 'total' in dir() else 0
 
 # ── 헤더 ──────────────────────────────────────────────────────────────
@@ -305,6 +315,64 @@ with col_inp:
     total = st.number_input("총 투자금액 (원)", min_value=100000, value=100000000, step=1000000, format="%d")
 
 def 금액(p): return round(total * p / 100)
+
+# ── 시세 조회 (yfinance) ─────────────────────────────────────────────
+# 거래소 접미사: 미국=없음, 한국=.KS/.KQ, 일본=.T, 독일=.DE
+시장_접미사 = {
+    "미국": "",
+    "한국 (KOSPI)": ".KS",
+    "한국 (KOSDAQ)": ".KQ",
+    "일본": ".T",
+    "독일": ".DE",
+}
+
+@st.cache_data(ttl=300, show_spinner=False)
+def 현재가조회(티커, 접미사):
+    """yfinance로 현재가 조회. (가격, 통화) 반환. 실패시 (None, None)"""
+    if not YF_OK:
+        return None, None
+    심볼 = f"{티커.strip().upper()}{접미사}"
+    try:
+        t = yf.Ticker(심볼)
+        가격 = None
+        통화 = None
+        try:
+            fi = t.fast_info
+            가격 = fi.get("last_price") or fi.get("lastPrice")
+            통화 = fi.get("currency")
+        except Exception:
+            pass
+        if 가격 is None:
+            hist = t.history(period="5d")
+            if not hist.empty:
+                가격 = float(hist["Close"].dropna().iloc[-1])
+        if 통화 is None:
+            try:
+                통화 = t.info.get("currency")
+            except Exception:
+                통화 = None
+        return (float(가격) if 가격 else None), 통화
+    except Exception:
+        return None, None
+
+@st.cache_data(ttl=600, show_spinner=False)
+def 환율조회(통화코드):
+    """해당 통화 1단위가 몇 원인지 반환. 실패시 None"""
+    if 통화코드 == "KRW":
+        return 1.0
+    if not YF_OK:
+        return None
+    try:
+        t = yf.Ticker(f"{통화코드}KRW=X")
+        fi = t.fast_info
+        r = fi.get("last_price") or fi.get("lastPrice")
+        if r is None:
+            hist = t.history(period="5d")
+            if not hist.empty:
+                r = float(hist["Close"].dropna().iloc[-1])
+        return float(r) if r else None
+    except Exception:
+        return None
 
 # ── 카테고리 입력 렌더링 함수 ─────────────────────────────────────────
 def 카테고리_입력(prefix, sa, cat_key):
@@ -477,6 +545,8 @@ if "_pending_load" in st.session_state:
     st.session_state["목표자산"] = 불러온.get("목표자산", {})
     st.session_state["현재통화"] = 불러온.get("현재통화", {})
     st.session_state["목표통화"] = 불러온.get("목표통화", {})
+    if "보유종목" in 불러온:
+        st.session_state["보유종목"] = 불러온["보유종목"]
     for prefix, srcA, srcC in [("현재", 불러온.get("현재자산",{}), 불러온.get("현재통화",{})),
                                ("목표", 불러온.get("목표자산",{}), 불러온.get("목표통화",{}))]:
         for cat, info in 카테고리.items():
@@ -488,7 +558,7 @@ if "_pending_load" in st.session_state:
                 st.session_state[f"{prefix}_c_{이름}"] = float(srcC[이름])
 
 # ── 탭 ───────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["  📌  현재 비중  ", "  🎯  목표 비중  ", "  ⚡  비교 & 리밸런싱  "])
+tab1, tab2, tab3, tab4 = st.tabs(["  📌  현재 비중  ", "  🎯  목표 비중  ", "  ⚡  비교 & 리밸런싱  ", "  💹  종목 관리  "])
 
 with tab1:
     입력탭("현재", st.session_state["현재자산"], st.session_state["현재통화"])
@@ -662,6 +732,134 @@ with tab3:
             st.markdown('<p style="color:rgba(234,234,234,0.15);font-size:0.8rem;">매도할 자산 없음</p>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════
+# 탭4: 종목 관리 (티커 + 수량 + 매입가 → 현재가/수익률)
+# ══════════════════════════════════════════════════════════════════════
+with tab4:
+    if not YF_OK:
+        st.error("⚠️ yfinance 라이브러리가 설치되어 있지 않습니다. requirements.txt에 yfinance를 추가하고 재배포해주세요.")
+
+    st.markdown('<p style="color:rgba(234,234,234,0.4);font-size:0.8rem;margin-bottom:4px;">종목 티커 · 수량 · 매입단가를 입력하면 현재가와 수익률이 자동 계산됩니다.</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color:rgba(234,234,234,0.22);font-size:0.72rem;margin-bottom:18px;">※ 시세는 무료 데이터 기준 약 15분 지연. 미국=티커 그대로(AAPL), 한국=종목코드(005930), 일본/독일도 코드 입력 후 시장만 선택하세요.</p>', unsafe_allow_html=True)
+
+    종목카테고리 = ["주식", "채권", "대체투자", "현금성 자산"]
+    cat_color_map = {c: 카테고리[c]["color"] for c in 종목카테고리}
+
+    선택카테고리 = st.radio("카테고리 선택", 종목카테고리, horizontal=True, key="종목_카테고리선택")
+    색 = cat_color_map[선택카테고리]
+
+    # ── 새 종목 추가 입력 ────────────────────────────────────────────
+    st.markdown(f'<div class="section-label" style="color:{색}">▸ {선택카테고리} 종목 추가</div>', unsafe_allow_html=True)
+    add_cols = st.columns([2, 2, 1.5, 1.5, 1])
+    with add_cols[0]:
+        새티커 = st.text_input("티커 / 종목코드", key="새티커", placeholder="예: AAPL, 005930")
+    with add_cols[1]:
+        새시장 = st.selectbox("시장", list(시장_접미사.keys()), key="새시장")
+    with add_cols[2]:
+        새수량 = st.number_input("수량 (주)", min_value=0.0, value=0.0, step=1.0, key="새수량")
+    with add_cols[3]:
+        새매입가 = st.number_input("매입단가", min_value=0.0, value=0.0, step=0.01, key="새매입가")
+    with add_cols[4]:
+        st.markdown("<br>", unsafe_allow_html=True)
+        추가 = st.button("➕ 추가", use_container_width=True, key="종목추가버튼")
+
+    if 추가:
+        if 새티커.strip() and 새수량 > 0:
+            st.session_state["보유종목"][선택카테고리].append({
+                "티커": 새티커.strip().upper(),
+                "시장": 새시장,
+                "수량": 새수량,
+                "매입가": 새매입가,
+            })
+            st.rerun()
+        else:
+            st.warning("티커와 수량(0보다 큰 값)을 입력해주세요.")
+
+    st.markdown("<hr>", unsafe_allow_html=True)
+
+    # ── 보유 종목 표시 + 시세 계산 ──────────────────────────────────
+    전체평가액_원 = 0.0
+    전체매입액_원 = 0.0
+
+    for cat in 종목카테고리:
+        보유 = st.session_state["보유종목"][cat]
+        if not 보유:
+            continue
+        cat_색 = cat_color_map[cat]
+        st.markdown(f'<div class="section-label" style="color:{cat_색}">{cat} 보유 종목</div>', unsafe_allow_html=True)
+
+        rows = []
+        for idx, 종목 in enumerate(보유):
+            접미사 = 시장_접미사[종목["시장"]]
+            가격, 통화 = 현재가조회(종목["티커"], 접미사)
+            통화 = 통화 or {"미국":"USD","한국 (KOSPI)":"KRW","한국 (KOSDAQ)":"KRW","일본":"JPY","독일":"EUR"}.get(종목["시장"], "USD")
+            환율 = 환율조회(통화) or 1.0
+
+            수량 = 종목["수량"]; 매입가 = 종목["매입가"]
+            if 가격 is not None:
+                평가액 = 가격 * 수량
+                매입액 = 매입가 * 수량
+                평가액_원 = 평가액 * 환율
+                매입액_원 = 매입액 * 환율
+                전체평가액_원 += 평가액_원
+                전체매입액_원 += 매입액_원
+                수익률 = ((가격 - 매입가) / 매입가 * 100) if 매입가 > 0 else 0
+                손익_원 = 평가액_원 - 매입액_원
+                rows.append({
+                    "티커": f"{종목['티커']}",
+                    "시장": 종목["시장"],
+                    "수량": f"{수량:,.0f}",
+                    "매입가": f"{매입가:,.2f}",
+                    "현재가": f"{가격:,.2f}",
+                    "통화": 통화,
+                    "평가액(원)": f"{평가액_원:,.0f}",
+                    "손익(원)": f"{'+' if 손익_원>=0 else ''}{손익_원:,.0f}",
+                    "수익률": f"{'+' if 수익률>=0 else ''}{수익률:.2f}%",
+                    "_수익률": 수익률,
+                })
+            else:
+                rows.append({
+                    "티커": 종목['티커'], "시장": 종목["시장"],
+                    "수량": f"{수량:,.0f}", "매입가": f"{매입가:,.2f}",
+                    "현재가": "조회실패", "통화": "-",
+                    "평가액(원)": "-", "손익(원)": "-", "수익률": "-", "_수익률": 0,
+                })
+
+        if rows:
+            df_종목 = pd.DataFrame(rows)
+            def 수익률색(v):
+                s = str(v)
+                if s.startswith("+"): return "color:#4ade80;font-weight:600"
+                if s.startswith("-"): return "color:#f87171;font-weight:600"
+                return ""
+            표 = df_종목[["티커","시장","수량","매입가","현재가","통화","평가액(원)","손익(원)","수익률"]]
+            st.dataframe(표.style.applymap(수익률색, subset=["손익(원)","수익률"]),
+                         use_container_width=True, hide_index=True)
+
+            # 삭제 버튼
+            del_cols = st.columns(len(보유) if len(보유) <= 8 else 8)
+            for idx, 종목 in enumerate(보유):
+                with del_cols[idx % 8]:
+                    if st.button(f"🗑 {종목['티커']}", key=f"del_{cat}_{idx}", use_container_width=True):
+                        st.session_state["보유종목"][cat].pop(idx)
+                        st.rerun()
+
+    # ── 전체 요약 ────────────────────────────────────────────────────
+    if 전체매입액_원 > 0:
+        st.markdown("<hr>", unsafe_allow_html=True)
+        st.markdown('<div class="section-label">전체 포트폴리오 손익</div>', unsafe_allow_html=True)
+        전체손익 = 전체평가액_원 - 전체매입액_원
+        전체수익률 = (전체손익 / 전체매입액_원 * 100) if 전체매입액_원 > 0 else 0
+        손익색 = "#4ade80" if 전체손익 >= 0 else "#f87171"
+
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("총 매입금액", f"{전체매입액_원:,.0f}원")
+        s2.metric("총 평가금액", f"{전체평가액_원:,.0f}원")
+        s3.metric("총 손익", f"{전체손익:,.0f}원")
+        s4.metric("총 수익률", f"{전체수익률:+.2f}%")
+    else:
+        st.markdown('<p style="color:rgba(234,234,234,0.2);font-size:0.82rem;margin-top:10px;">아직 추가된 종목이 없습니다. 위에서 종목을 추가해보세요.</p>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════
 # 데이터 저장 / 불러오기 / PDF (맨 아래)
 # ══════════════════════════════════════════════════════════════════════
 st.markdown("<hr>", unsafe_allow_html=True)
@@ -677,6 +875,7 @@ with ex_col:
         "목표자산": st.session_state["목표자산"],
         "현재통화": st.session_state["현재통화"],
         "목표통화": st.session_state["목표통화"],
+        "보유종목": st.session_state["보유종목"],
     }
     json_str = json.dumps(저장데이터, ensure_ascii=False, indent=2)
     st.download_button(

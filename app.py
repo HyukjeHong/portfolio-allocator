@@ -61,6 +61,56 @@ div[data-testid="stNumberInput"] button {
     color: #EAEAEA !important;
 }
 
+/* 텍스트 입력창 (티커) */
+div[data-testid="stTextInput"] input {
+    background-color: #1a1a1a !important;
+    color: #EAEAEA !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 10px !important;
+    font-family: 'DM Mono', monospace !important;
+    -webkit-text-fill-color: #EAEAEA !important;
+}
+div[data-testid="stTextInput"] input:focus {
+    border: 1px solid #1E88E5 !important;
+    box-shadow: 0 0 0 3px rgba(30,136,229,0.12) !important;
+}
+div[data-testid="stTextInput"] label { color: rgba(234,234,234,0.35) !important; font-size: 0.7rem !important; }
+
+/* 셀렉트박스 (시장 선택) — 닫힌 상태 */
+div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+    background-color: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    border-radius: 10px !important;
+    color: #EAEAEA !important;
+}
+div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+    color: #EAEAEA !important;
+}
+div[data-testid="stSelectbox"] label { color: rgba(234,234,234,0.35) !important; font-size: 0.7rem !important; }
+
+/* 셀렉트박스 드롭다운 메뉴 (펼친 상태) — 흰글씨 안보임 해결 */
+ul[data-testid="stSelectboxVirtualDropdown"],
+div[data-baseweb="popover"] ul,
+div[data-baseweb="menu"] {
+    background-color: #1e1e1e !important;
+}
+ul[data-testid="stSelectboxVirtualDropdown"] li,
+div[data-baseweb="popover"] li,
+div[data-baseweb="menu"] li {
+    background-color: #1e1e1e !important;
+    color: #EAEAEA !important;
+}
+ul[data-testid="stSelectboxVirtualDropdown"] li:hover,
+div[data-baseweb="popover"] li:hover,
+div[data-baseweb="menu"] li:hover {
+    background-color: #1E88E5 !important;
+    color: #ffffff !important;
+}
+
+/* 라디오 버튼 라벨 */
+div[data-testid="stRadio"] label { color: #EAEAEA !important; }
+
+
 .stTabs [data-baseweb="tab-list"] {
     background: #161616 !important;
     border: 1px solid #252525 !important;
@@ -292,6 +342,51 @@ for k in ["현재자산","목표자산","현재통화","목표통화"]:
 if "보유종목" not in st.session_state:
     st.session_state["보유종목"] = {cat: [] for cat in ["주식","채권","대체투자","현금성 자산"]}
 
+# ── 자동 저장 / 불러오기 (혼자 쓰는 용도) ─────────────────────────────
+import os
+자동저장파일 = "autosave.json"
+
+def 자동저장():
+    데이터 = {
+        "총투자금액": st.session_state.get("총투자금액_val", 100000000),
+        "현재자산": st.session_state["현재자산"],
+        "목표자산": st.session_state["목표자산"],
+        "현재통화": st.session_state["현재통화"],
+        "목표통화": st.session_state["목표통화"],
+        "보유종목": st.session_state["보유종목"],
+    }
+    try:
+        with open(자동저장파일, "w", encoding="utf-8") as f:
+            json.dump(데이터, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+# 앱 처음 켤 때 자동저장 파일이 있으면 불러오기 (한 번만)
+if "_자동불러옴" not in st.session_state:
+    st.session_state["_자동불러옴"] = True
+    if os.path.exists(자동저장파일):
+        try:
+            with open(자동저장파일, "r", encoding="utf-8") as f:
+                저장 = json.load(f)
+            st.session_state["현재자산"] = 저장.get("현재자산", {})
+            st.session_state["목표자산"] = 저장.get("목표자산", {})
+            st.session_state["현재통화"] = 저장.get("현재통화", {})
+            st.session_state["목표통화"] = 저장.get("목표통화", {})
+            st.session_state["보유종목"] = 저장.get("보유종목", st.session_state["보유종목"])
+            st.session_state["_자동총투자금액"] = 저장.get("총투자금액", 100000000)
+            # 위젯 key 세팅
+            for prefix, srcA, srcC in [("현재", 저장.get("현재자산",{}), 저장.get("현재통화",{})),
+                                       ("목표", 저장.get("목표자산",{}), 저장.get("목표통화",{}))]:
+                for cat, info in 카테고리.items():
+                    for 이름, _ in info["items"]:
+                        if 이름 in srcA:
+                            st.session_state[f"{prefix}_a_{이름}"] = float(srcA[이름])
+                for 이름, _, _ in 통화목록:
+                    if 이름 in srcC:
+                        st.session_state[f"{prefix}_c_{이름}"] = float(srcC[이름])
+        except Exception:
+            pass
+
 def 금액(p): return round(total * p / 100) if 'total' in dir() else 0
 
 # ── 헤더 ──────────────────────────────────────────────────────────────
@@ -312,7 +407,10 @@ with col_t:
     ''', unsafe_allow_html=True)
 with col_inp:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    total = st.number_input("총 투자금액 (원)", min_value=100000, value=100000000, step=1000000, format="%d")
+    total = st.number_input("총 투자금액 (원)", min_value=100000,
+                            value=int(st.session_state.get("_자동총투자금액", 100000000)),
+                            step=1000000, format="%d")
+    st.session_state["총투자금액_val"] = total
 
 def 금액(p): return round(total * p / 100)
 
@@ -864,6 +962,7 @@ with tab4:
 # ══════════════════════════════════════════════════════════════════════
 st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown('<div class="section-label">데이터 저장 / 불러오기 / 보고서</div>', unsafe_allow_html=True)
+st.markdown('<p style="color:#4ade80;font-size:0.72rem;margin-top:-6px;margin-bottom:14px;">✓ 자동 저장 켜짐 — 입력하는 모든 값이 자동으로 저장되어 다음에 들어와도 그대로 유지됩니다. (아래는 백업용 수동 저장)</p>', unsafe_allow_html=True)
 
 ex_col, im_col, pdf_col = st.columns(3)
 
@@ -1001,3 +1100,6 @@ with pdf_col:
 st.markdown('<p style="color:rgba(234,234,234,0.2);font-size:0.68rem;margin-top:4px;">📄 PDF 보고서: 다운로드된 파일을 더블클릭으로 열고 → "PDF로 저장/인쇄" 버튼 클릭 → PDF로 저장 선택</p>', unsafe_allow_html=True)
 
 st.markdown('<p style="font-family:\'DM Mono\',monospace;font-size:0.6rem;color:rgba(234,234,234,0.07);text-align:center;letter-spacing:1px;margin-top:40px;">FOR REFERENCE ONLY · NOT FINANCIAL ADVICE</p>', unsafe_allow_html=True)
+
+# ── 모든 변경사항 자동 저장 (맨 마지막 실행) ──────────────────────────
+자동저장()

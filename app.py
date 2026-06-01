@@ -470,57 +470,22 @@ def 입력탭(prefix, sa, sc):
         with col_통:
             st.plotly_chart(fig2, use_container_width=True)
 
-# ── 내보내기 / 가져오기 ───────────────────────────────────────────────
-st.markdown('<div class="section-label">데이터 저장 / 불러오기</div>', unsafe_allow_html=True)
-
-exp_col, imp_col = st.columns(2)
-
-with exp_col:
-    저장데이터 = {
-        "총투자금액": total,
-        "현재자산": st.session_state["현재자산"],
-        "목표자산": st.session_state["목표자산"],
-        "현재통화": st.session_state["현재통화"],
-        "목표통화": st.session_state["목표통화"],
-    }
-    json_str = json.dumps(저장데이터, ensure_ascii=False, indent=2)
-    st.download_button(
-        label="⬇  내보내기 (현재 입력값을 파일로 저장)",
-        data=json_str.encode("utf-8"),
-        file_name="portfolio.json",
-        mime="application/json",
-        use_container_width=True
-    )
-
-with imp_col:
-    업로드 = st.file_uploader("⬆  가져오기 (저장한 portfolio.json 파일 선택)", type=["json"], label_visibility="visible")
-    if 업로드 is not None:
-        try:
-            불러온 = json.load(업로드)
-            # 위젯이 이미 생성되기 전에 세션값을 세팅해야 하므로, 위젯 key를 직접 갱신
-            로드플래그 = f"loaded_{업로드.name}_{업로드.size}"
-            if not st.session_state.get(로드플래그, False):
-                st.session_state["현재자산"] = 불러온.get("현재자산", {})
-                st.session_state["목표자산"] = 불러온.get("목표자산", {})
-                st.session_state["현재통화"] = 불러온.get("현재통화", {})
-                st.session_state["목표통화"] = 불러온.get("목표통화", {})
-                # number_input 위젯 key들도 직접 세팅
-                for prefix, srcA, srcC in [("현재", 불러온.get("현재자산",{}), 불러온.get("현재통화",{})),
-                                           ("목표", 불러온.get("목표자산",{}), 불러온.get("목표통화",{}))]:
-                    for cat, info in 카테고리.items():
-                        for 이름, _ in info["items"]:
-                            if 이름 in srcA:
-                                st.session_state[f"{prefix}_a_{이름}"] = float(srcA[이름])
-                    for 이름, _, _ in 통화목록:
-                        if 이름 in srcC:
-                            st.session_state[f"{prefix}_c_{이름}"] = float(srcC[이름])
-                st.session_state[로드플래그] = True
-                st.success("✅ 불러오기 완료! 아래 탭에서 확인하세요.")
-                st.rerun()
-        except Exception as e:
-            st.error("⚠️ 파일을 읽을 수 없습니다. 올바른 portfolio.json 파일인지 확인해주세요.")
-
-st.markdown("<hr>", unsafe_allow_html=True)
+# ── 가져오기 대기 데이터 처리 (위젯 생성 전에 실행되어야 함) ───────────
+if "_pending_load" in st.session_state:
+    불러온 = st.session_state.pop("_pending_load")
+    st.session_state["현재자산"] = 불러온.get("현재자산", {})
+    st.session_state["목표자산"] = 불러온.get("목표자산", {})
+    st.session_state["현재통화"] = 불러온.get("현재통화", {})
+    st.session_state["목표통화"] = 불러온.get("목표통화", {})
+    for prefix, srcA, srcC in [("현재", 불러온.get("현재자산",{}), 불러온.get("현재통화",{})),
+                               ("목표", 불러온.get("목표자산",{}), 불러온.get("목표통화",{}))]:
+        for cat, info in 카테고리.items():
+            for 이름, _ in info["items"]:
+                if 이름 in srcA:
+                    st.session_state[f"{prefix}_a_{이름}"] = float(srcA[이름])
+        for 이름, _, _ in 통화목록:
+            if 이름 in srcC:
+                st.session_state[f"{prefix}_c_{이름}"] = float(srcC[이름])
 
 # ── 탭 ───────────────────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["  📌  현재 비중  ", "  🎯  목표 비중  ", "  ⚡  비교 & 리밸런싱  "])
@@ -695,5 +660,145 @@ with tab3:
                 </div>''', unsafe_allow_html=True)
         else:
             st.markdown('<p style="color:rgba(234,234,234,0.15);font-size:0.8rem;">매도할 자산 없음</p>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════
+# 데이터 저장 / 불러오기 / PDF (맨 아래)
+# ══════════════════════════════════════════════════════════════════════
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown('<div class="section-label">데이터 저장 / 불러오기 / 보고서</div>', unsafe_allow_html=True)
+
+ex_col, im_col, pdf_col = st.columns(3)
+
+# ── 내보내기 (JSON) ──────────────────────────────────────────────────
+with ex_col:
+    저장데이터 = {
+        "총투자금액": total,
+        "현재자산": st.session_state["현재자산"],
+        "목표자산": st.session_state["목표자산"],
+        "현재통화": st.session_state["현재통화"],
+        "목표통화": st.session_state["목표통화"],
+    }
+    json_str = json.dumps(저장데이터, ensure_ascii=False, indent=2)
+    st.download_button(
+        label="⬇  내보내기 (JSON 저장)",
+        data=json_str.encode("utf-8"),
+        file_name="portfolio.json",
+        mime="application/json",
+        use_container_width=True
+    )
+
+# ── 가져오기 (JSON) ──────────────────────────────────────────────────
+with im_col:
+    업로드 = st.file_uploader("⬆  가져오기 (portfolio.json)", type=["json"], label_visibility="collapsed")
+    if 업로드 is not None:
+        로드플래그 = f"loaded_{업로드.name}_{업로드.size}"
+        if not st.session_state.get(로드플래그, False):
+            try:
+                불러온 = json.load(업로드)
+                st.session_state["_pending_load"] = 불러온
+                st.session_state[로드플래그] = True
+                st.rerun()
+            except Exception:
+                st.error("⚠️ 올바른 portfolio.json 파일이 아닙니다.")
+
+# ── PDF 보고서 ───────────────────────────────────────────────────────
+with pdf_col:
+    현자_pdf = st.session_state["현재자산"]
+    목자_pdf = st.session_state["목표자산"]
+    현통_pdf = st.session_state["현재통화"]
+    목통_pdf = st.session_state["목표통화"]
+
+    # 자산 테이블 행 생성
+    def 금액_pdf(p): return round(total * p / 100)
+
+    자산행_html = ""
+    for cat, info in 카테고리.items():
+        cat_현 = sum(현자_pdf.get(n,0) for n,_ in info["items"])
+        cat_목 = sum(목자_pdf.get(n,0) for n,_ in info["items"])
+        자산행_html += f'''<tr class="cat-row" style="border-left:4px solid {info['color']};">
+            <td colspan="2"><b style="color:{info['color']};">{cat}</b> <span style="color:#888;font-size:11px;">{info['label']}</span></td>
+            <td style="text-align:right;">{cat_현:.1f}%</td>
+            <td style="text-align:right;">{cat_목:.1f}%</td>
+            <td style="text-align:right;color:{'#16a34a' if cat_목-cat_현>0 else '#dc2626' if cat_목-cat_현<0 else '#666'};">{cat_목-cat_현:+.1f}%</td>
+        </tr>'''
+        for 이름, 티커 in info["items"]:
+            현 = 현자_pdf.get(이름,0); 목 = 목자_pdf.get(이름,0)
+            if 현>0 or 목>0:
+                차 = 목-현
+                자산행_html += f'''<tr>
+                    <td style="padding-left:24px;">{이름}</td>
+                    <td style="color:#999;font-size:11px;">{티커}</td>
+                    <td style="text-align:right;">{현:.1f}% <span style="color:#aaa;font-size:11px;">({금액_pdf(현):,})</span></td>
+                    <td style="text-align:right;">{목:.1f}% <span style="color:#aaa;font-size:11px;">({금액_pdf(목):,})</span></td>
+                    <td style="text-align:right;color:{'#16a34a' if 차>0 else '#dc2626' if 차<0 else '#666'};">{차:+.1f}%</td>
+                </tr>'''
+
+    통화행_html = ""
+    for 이름, 티커, 아이콘 in 통화목록:
+        현 = 현통_pdf.get(이름,0); 목 = 목통_pdf.get(이름,0)
+        if 현>0 or 목>0:
+            차 = 목-현
+            통화행_html += f'''<tr>
+                <td>{이름}</td><td style="color:#999;font-size:11px;">{티커}</td>
+                <td style="text-align:right;">{현:.1f}%</td>
+                <td style="text-align:right;">{목:.1f}%</td>
+                <td style="text-align:right;color:{'#16a34a' if 차>0 else '#dc2626' if 차<0 else '#666'};">{차:+.1f}%</td>
+            </tr>'''
+
+    from datetime import datetime
+    오늘 = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    pdf_html = f'''<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<title>포트폴리오 리포트</title>
+<style>
+  @media print {{ .noprint {{ display:none; }} @page {{ margin: 1.5cm; }} }}
+  body {{ font-family:'Malgun Gothic','맑은 고딕',sans-serif; color:#1a1a1a; max-width:900px; margin:0 auto; padding:30px; }}
+  .header {{ border-bottom:3px solid #1E88E5; padding-bottom:16px; margin-bottom:24px; }}
+  .header h1 {{ margin:0; font-size:26px; letter-spacing:-1px; }}
+  .header .sub {{ color:#1E88E5; font-size:11px; letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }}
+  .meta {{ color:#666; font-size:12px; margin-top:6px; }}
+  .total-box {{ background:#f5f7fa; border:1px solid #e0e4ea; border-radius:10px; padding:16px 20px; margin:20px 0; font-size:18px; }}
+  .total-box b {{ color:#1E88E5; font-size:22px; }}
+  h2 {{ font-size:15px; color:#333; border-left:4px solid #1E88E5; padding-left:10px; margin-top:28px; }}
+  table {{ width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }}
+  th {{ background:#1E88E5; color:#fff; padding:9px 10px; text-align:left; font-size:12px; }}
+  th:nth-child(n+3) {{ text-align:right; }}
+  td {{ padding:7px 10px; border-bottom:1px solid #eee; }}
+  .cat-row {{ background:#f5f7fa; }}
+  .print-btn {{ background:#1E88E5; color:#fff; border:none; padding:12px 28px; border-radius:8px; font-size:14px; cursor:pointer; margin-bottom:20px; }}
+  .footer {{ margin-top:30px; padding-top:14px; border-top:1px solid #ddd; color:#999; font-size:11px; text-align:center; }}
+</style></head>
+<body>
+  <button class="print-btn noprint" onclick="window.print()">🖨️ PDF로 저장 / 인쇄하기</button>
+  <p class="noprint" style="color:#666;font-size:12px;">위 버튼을 누른 뒤, 인쇄 대화상자에서 <b>"대상"</b>을 <b>"PDF로 저장"</b>으로 선택하세요.</p>
+  <div class="header">
+    <div class="sub">● Portfolio Management System</div>
+    <h1>자산배분 포트폴리오 리포트</h1>
+    <div class="meta">생성일시: {오늘}</div>
+  </div>
+  <div class="total-box">총 투자금액 &nbsp; <b>{total:,}원</b></div>
+  <h2>자산군 현재 vs 목표</h2>
+  <table>
+    <tr><th>자산</th><th>티커</th><th>현재</th><th>목표</th><th>차이</th></tr>
+    {자산행_html if 자산행_html else '<tr><td colspan="5" style="color:#999;text-align:center;padding:20px;">입력된 자산이 없습니다</td></tr>'}
+  </table>
+  <h2>통화 비중 현재 vs 목표</h2>
+  <table>
+    <tr><th>통화</th><th>코드</th><th>현재</th><th>목표</th><th>차이</th></tr>
+    {통화행_html if 통화행_html else '<tr><td colspan="5" style="color:#999;text-align:center;padding:20px;">입력된 통화가 없습니다</td></tr>'}
+  </table>
+  <div class="footer">FOR REFERENCE ONLY · NOT FINANCIAL ADVICE · 본 자료는 투자 참고용입니다.</div>
+</body></html>'''
+
+    st.download_button(
+        label="📄  PDF 보고서 저장",
+        data=pdf_html.encode("utf-8"),
+        file_name="portfolio_report.html",
+        mime="text/html",
+        use_container_width=True
+    )
+
+st.markdown('<p style="color:rgba(234,234,234,0.2);font-size:0.68rem;margin-top:4px;">📄 PDF 보고서: 다운로드된 파일을 더블클릭으로 열고 → "PDF로 저장/인쇄" 버튼 클릭 → PDF로 저장 선택</p>', unsafe_allow_html=True)
 
 st.markdown('<p style="font-family:\'DM Mono\',monospace;font-size:0.6rem;color:rgba(234,234,234,0.07);text-align:center;letter-spacing:1px;margin-top:40px;">FOR REFERENCE ONLY · NOT FINANCIAL ADVICE</p>', unsafe_allow_html=True)
